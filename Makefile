@@ -51,7 +51,7 @@ develop: meson
 	$(PYTHON) -m pip install -e .
 
 # Install package
-install: 
+install:
 	$(PYTHON) -m pip install .
 
 # Build wheel
