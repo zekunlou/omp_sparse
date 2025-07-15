@@ -1,0 +1,8 @@
+*.mod
+*/__pycache__
+*.pyc
+docs
+examples
+CLAUDE.md
+tests/
+validate_installation.py

@@ -1,0 +1,78 @@
+[build-system]
+requires = ["setuptools>=45", "wheel", "numpy", "meson-python>=0.13.0"]
+build-backend = "mesonpy"
+
+[project]
+name = "omp-sparse"
+version = "1.0.0"
+description = "High-performance OpenMP-accelerated dense-sparse matrix multiplication"
+readme = "README.md"
+license = {file = "LICENSE"}
+authors = [
+    {name = "Zekun Lou", email = "zekunlou@example.com"}
+]
+keywords = ["sparse matrix", "dense matrix", "matrix multiplication", "openmp", "fortran", "scientific computing", "high performance"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Fortran",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+requires-python = ">=3.8"
+dependencies = [
+    "numpy>=1.20.0",
+    "scipy>=1.6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=6.0",
+    "pytest-benchmark",
+    "matplotlib",
+    "memory-profiler",
+]
+docs = [
+    "sphinx",
+    "sphinx-rtd-theme",
+    "numpydoc",
+]
+
+[project.urls]
+Homepage = "https://github.com/zekunlou/omp-sparse"
+Repository = "https://github.com/zekunlou/omp-sparse"
+Documentation = "https://github.com/zekunlou/omp-sparse#readme"
+"Bug Tracker" = "https://github.com/zekunlou/omp-sparse/issues"
+
+[project.scripts]
+omp-sparse-benchmark = "omp_sparse.benchmark:main"
+
+[tool.setuptools]
+packages = ["omp_sparse"]
+
+[tool.setuptools.package-data]
+omp_sparse = ["*.so", "lib/*.so"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "--verbose --tb=short"
+
+[tool.black]
+line-length = 100
+target-version = ['py38']
+
+[tool.isort]
+profile = "black"
+line_length = 100
