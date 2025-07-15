@@ -10,32 +10,24 @@ performance across a wide range of matrix sizes and sparsity patterns.
 
 __version__ = "1.0.0"
 __author__ = "Zekun Lou"
-__email__ = "zekunlou@example.com"
+__email__ = "null@null.null"
 
-import os
-import sys
 import warnings
-from typing import Literal, Optional, Tuple, Union
+from typing import Literal, Optional, Union
 
 import numpy as np
 import scipy.sparse
 
-# Add lib directory to path for importing compiled module
-_lib_path = os.path.join(os.path.dirname(__file__), "lib")
-if _lib_path not in sys.path:
-    sys.path.insert(0, _lib_path)
-
 try:
-    # Import the compiled shared library
-    import omp_sparse as _omp_sparse_module
-
-    _omp_sparse_mod = _omp_sparse_module.omp_sparse_mod
+    # full path: omp_sparse.lib.omp_sparse.omp_sparse_mod.dense_dot_sparse_v4
+    from omp_sparse.lib.omp_sparse import omp_sparse_mod as _omp_sparse_mod
     _MODULE_AVAILABLE = True
 except ImportError as e:
     warnings.warn(
         f"Failed to import compiled omp_sparse module: {e}. "
         "Please ensure the package is properly built with 'make' or 'pip install'.",
         ImportWarning,
+        stacklevel=2,
     )
     _MODULE_AVAILABLE = False
     _omp_sparse_mod = None

@@ -1,4 +1,4 @@
-project('omp_sparse', 
+project('omp_sparse',
         ['c', 'fortran'],
         version: '1.0.0',
         default_options: [
@@ -9,6 +9,9 @@ project('omp_sparse',
 # Python and NumPy dependencies
 py = import('python').find_installation(pure: false)
 py_dep = py.dependency()
+
+# Import filesystem module
+fs = import('fs')
 
 # Find NumPy
 run_command(py, ['-c', 'import numpy; print(numpy.get_include())'], check: true)

@@ -6,3 +6,5 @@ examples
 CLAUDE.md
 tests/
 validate_installation.py
+omp_sparse/lib
+build
