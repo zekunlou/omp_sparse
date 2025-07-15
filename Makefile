@@ -5,7 +5,7 @@
 FC = gfortran
 
 # Fortran compiler flags
-FFLAGS = -fopenmp -fPIC -O3 -march=native -mtune=native
+FFLAGS = -fopenmp -fPIC -O2 -march=native -mtune=native
 
 # Output directory
 LIBDIR = omp_sparse/lib
@@ -17,15 +17,15 @@ TARGET = $(LIBDIR)/omp_sparse.cpython-311-x86_64-linux-gnu.so
 SRC = src/fortran/omp_sparse.f90
 
 # Python executable (prefer conda if available)
-PYTHON = python3
+PYTHON = python
 
-# Default: use system f2py with distutils backend (MOST COMPATIBLE)
-F2PY_SYSTEM = /usr/bin/f2py
+# Default: use f2py with distutils backend (MOST COMPATIBLE)
+F2PY_SYSTEM := /usr/bin/f2py
 F2PY_FLAGS_SYSTEM = -c --f90flags="$(FFLAGS)" -lgomp -lm
 
 # Meson: use f2py with meson backend
-F2PY_MESON = f2py
-F2PY_FLAGS_MESON = -c --backend meson --f90flags="$(FFLAGS)" --opt="-O3" -lgomp -lm
+F2PY_MESON := $(shell which f2py || which f2py3)
+F2PY_FLAGS_MESON = -c --backend meson --f90flags="$(FFLAGS)" --opt="-O2" -lgomp -lm
 
 .PHONY: all clean install test system meson develop
 
@@ -47,7 +47,7 @@ meson: $(LIBDIR)
 	cd $(LIBDIR) && $(F2PY_MESON) $(F2PY_FLAGS_MESON) -m omp_sparse ../../$(SRC)
 
 # Install package in development mode
-develop: system
+develop: meson
 	$(PYTHON) -m pip install -e .
 
 # Install package
