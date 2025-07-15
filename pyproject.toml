@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=45", "wheel", "numpy", "meson-python>=0.13.0"]
+requires = ["setuptools>=45", "wheel", "numpy>=1.20.0", "meson-python>=0.13.0"]
 build-backend = "mesonpy"
 
 [project]
