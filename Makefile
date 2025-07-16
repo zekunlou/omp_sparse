@@ -20,8 +20,8 @@ SRC = src/fortran/omp_sparse.f90
 PYTHON = python
 
 # Default: use f2py with distutils backend (MOST COMPATIBLE)
-F2PY_SYSTEM := f2py
-# F2PY_SYSTEM := /usr/bin/f2py  # NOTE: I am confused, which f2py to use???
+# F2PY_SYSTEM := f2py
+F2PY_SYSTEM := /usr/bin/f2py  # NOTE: I am confused, which f2py to use???
 F2PY_FLAGS_SYSTEM = -c --f90flags="$(FFLAGS)" -lgomp -lm
 
 # Meson: use f2py with meson backend
@@ -45,7 +45,8 @@ $(TARGET): $(SRC) | $(LIBDIR)
 
 # Meson backend build
 meson: $(LIBDIR)
-	cd $(LIBDIR) && $(F2PY_MESON) $(F2PY_FLAGS_MESON) -m omp_sparse ../../$(SRC)
+	cd $(LIBDIR) && env FFLAGS="$(FFLAGS)" $(F2PY_MESON) $(F2PY_FLAGS_MESON) -m omp_sparse ../../$(SRC)
+# NOTE: it seems `env FFLAGS="$(FFLAGS)"` is critical to meson's using openmp, but IDK why
 
 # Install package in development mode
 develop: meson
