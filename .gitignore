@@ -1,10 +1,12 @@
 *.mod
-*/__pycache__
+*/__pycache__/
 *.pyc
-docs
-examples
+docs/
+examples/
 CLAUDE.md
 tests/
+!tests/test_omp_sparse.py
 validate_installation.py
-omp_sparse/lib
-build
+omp_sparse/lib/
+build/
+*.egg-info/
