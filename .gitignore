@@ -4,8 +4,8 @@
 docs/
 examples/
 CLAUDE.md
-tests/
-!tests/test_omp_sparse.py
+tests/quick_test.py
+data/
 validate_installation.py
 omp_sparse/lib/
 build/
