@@ -19,9 +19,8 @@ SRC = src/fortran/omp_sparse.f90
 # Python executable (prefer conda if available)
 PYTHON = python
 
-# Default: use f2py with distutils backend (MOST COMPATIBLE)
-# F2PY_SYSTEM := f2py
-F2PY_SYSTEM := /usr/bin/f2py  # NOTE: I am confused, which f2py to use???
+# Default: use f2py with distutils backend  (doesn't work if using python>=3.12 or numpy>=1.23.0)
+F2PY_SYSTEM := $(shell which f2py || which f2py3)
 F2PY_FLAGS_SYSTEM = -c --f90flags="$(FFLAGS)" -lgomp -lm
 
 # Meson: use f2py with meson backend
@@ -37,7 +36,7 @@ all: system
 $(LIBDIR):
 	mkdir -p $(LIBDIR)
 
-# System f2py build (most compatible)
+# System f2py build
 system: $(TARGET)
 
 $(TARGET): $(SRC) | $(LIBDIR)

@@ -38,12 +38,13 @@ pip install -e .  # Install in development mode
 The package supports two build backends via f2py:
 
 ```bash
-# Using system f2py with numpy backend (most compatible, default)
-make system
-pip install -e .
-
 # Using f2py with meson backend (often faster performance)
 make meson
+pip install -e .
+
+# Using system f2py with numpy backend (doesn't work if using python>=3.12 or numpy>=1.23.0)
+# this will be removed in the future
+make system
 pip install -e .
 ```
 
