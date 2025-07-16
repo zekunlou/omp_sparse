@@ -8,21 +8,11 @@ A high-performance Python package for OpenMP-accelerated dense-sparse matrix mul
 
 ## Features
 
-- **High Performance**: OpenMP-parallelized Fortran implementation with up to 8x speedup
+- **High Performance**: OpenMP-parallelized Fortran implementation with up to 8x speedup (of course it depends)
 - **Optimized Algorithm**: v4 algorithm provides excellent performance across matrix sizes and sparsity patterns
 - **Scientific Computing Ready**: Tested on real computational chemistry datasets
 - **Easy Integration**: Clean Python API with NumPy and SciPy compatibility
 - **Memory Efficient**: Automatic memory management and garbage collection
-- **Extensible Design**: Ready for future algorithm additions
-
-## Performance
-
-The v4 algorithm provides significant speedups over NumPy for sparse matrix multiplication:
-
-- **Dense matrices**: 1000x2000 to 12000x45000
-- **Sparse matrices**: 2000x3000 to 45000x60000
-- **Speedup**: 3-8x faster than NumPy depending on matrix size and sparsity
-- **Thread scaling**: Linear scaling up to 8 OpenMP threads
 
 ## Installation
 
@@ -57,7 +47,7 @@ make meson
 pip install -e .
 ```
 
-**Performance Note**: The meson backend often provides better performance (2-3x faster) than the system backend, but requires meson to be installed.
+The meson backend requires meson to be installed.
 
 ## Quick Start
 
@@ -85,11 +75,13 @@ print(f"Result type: {type(result)}")
 
 ### Benchmarking
 
+Please set `OMP_NUM_THREADS` to the number of CPU cores you want to use before running benchmarks.
+
 ```python
 import time
 import numpy as np
 import scipy.sparse as sp
-from omp_sparse import OMPSparseMultiplier
+from omp_sparse import OMPSparseMultiplier, benchmark_dense_dot_dense
 
 # Create test matrices
 dense = np.random.random((1000, 2000)).astype(np.float64)
@@ -104,6 +96,18 @@ print(f"Mean time: {benchmark_result['mean_time']:.6f} +- {benchmark_result['std
 print(f"Correct: {benchmark_result['correct']}")
 print(f"Matrix shape: {benchmark_result['matrix_shape']}")
 print(f"Density: {benchmark_result['density']:.4f}")
+
+# Compare with dense-dense multiplication baseline
+dense_baseline = benchmark_dense_dot_dense(dense, sparse, repeats=5)
+
+print(f"\nBaseline (NumPy dense @ dense):")
+print(f"Mean time: {dense_baseline['mean_time']:.6f} +- {dense_baseline['std_time']:.6f} seconds")
+print(f"Matrix shape: {dense_baseline['matrix_shape']}")
+print(f"Density: {dense_baseline['density']:.4f}")
+
+# Calculate speedup
+speedup = dense_baseline['mean_time'] / benchmark_result['mean_time']
+print(f"\nSpeedup over dense multiplication: {speedup:.2f}x")
 ```
 
 ## Command Line Interface
@@ -111,6 +115,9 @@ print(f"Density: {benchmark_result['density']:.4f}")
 The package includes a command-line benchmarking tool:
 
 ```bash
+# set number of threads
+# export MKL_NUM_THREADS=16 && export OMP_NUM_THREADS=16 && <other commands>
+
 # Benchmark with random data
 omp-sparse-benchmark --data random --M 1000 --K 2000 --N 3000 --density 0.02
 
@@ -180,21 +187,6 @@ python -m pytest tests/test_omp_sparse.py::TestEdgeCases -v
 # Run with scientific datasets (if available)
 python -m pytest tests/test_omp_sparse.py::TestScientificDatasets -v
 ```
-
-## Scientific Applications
-
-This package has been tested on real computational chemistry datasets:
-
-- **Water**: Small molecular systems (418x7117)
-- **Graphene**: 2D material supercells (3096x17200)
-- **TiS2**: Transition metal dichalcogenides (12510x44878)
-- **ZrS2**: Large systems (17064x59560)
-
-These datasets represent typical dense-sparse matrix operations in:
-- Electronic structure calculations
-- Molecular dynamics simulations
-- Materials science computations
-- Quantum chemistry calculations
 
 ## API Reference
 
@@ -288,14 +280,3 @@ If you use this software in academic research, please cite:
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## Acknowledgments
-
-- OpenMP for parallel computing support
-- F2Py for seamless Fortran-Python integration
-- SciPy for sparse matrix formats
-- NumPy for dense matrix operations

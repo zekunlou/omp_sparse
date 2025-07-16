@@ -17,6 +17,9 @@ from scipy.sparse import coo_matrix
 
 from . import OMPSparseMultiplier
 
+file_path = os.path.abspath(__file__)
+data_path = os.path.abspath(f"{file_path}/../../data")
+print(data_path)
 
 def log(*args, **kwargs):
     """Logging utility with automatic flushing."""
@@ -28,22 +31,22 @@ def log(*args, **kwargs):
 def load_data(data_source: str, args) -> tuple:
     """
     Load test data from various sources.
-    
+
     Args:
         data_source: Source of data ('random', 'water', 'graphene', 'TiS2', 'ZrS2')
         args: Command line arguments containing matrix dimensions
-        
+
     Returns:
         Tuple of (dense_matrix, sparse_matrix, M, K, N, NNZ)
     """
     log(f"Loading data from source: {data_source}")
-    
+
     if data_source == "random":
         # Matrix dimensions - use provided args or defaults
-        M = getattr(args, 'M', 1000)
-        K = getattr(args, 'K', 2000)
-        N = getattr(args, 'N', 3000)
-        density = getattr(args, 'density', 0.02)
+        M = getattr(args, "M", 1000)
+        K = getattr(args, "K", 2000)
+        N = getattr(args, "N", 3000)
+        density = getattr(args, "density", 0.02)
 
         # Validate inputs
         if M <= 0 or K <= 0 or N <= 0:
@@ -66,29 +69,29 @@ def load_data(data_source: str, args) -> tuple:
 
     elif data_source == "water":
         try:
-            dense_mat = np.load("tests/data/data_dense_water.npy").astype(np.float64)
-            coo_ds = scipy.sparse.load_npz("tests/data/data_sparse_water.npz")
+            dense_mat = np.load(f"{data_path}/data_dense_water.npy").astype(np.float64)
+            coo_ds = scipy.sparse.load_npz(f"{data_path}/data_sparse_water.npz")
         except FileNotFoundError as e:
             raise FileNotFoundError(f"Water dataset not found: {e}") from e
 
     elif data_source == "TiS2":
         try:
-            dense_mat = np.load("tests/data/data_dense_TiS2_3x3.npy").astype(np.float64)
-            coo_ds = scipy.sparse.load_npz("tests/data/data_sparse_TiS2_3x3.npz")
+            dense_mat = np.load(f"{data_path}/data_dense_TiS2_3x3.npy").astype(np.float64)
+            coo_ds = scipy.sparse.load_npz(f"{data_path}/data_sparse_TiS2_3x3.npz")
         except FileNotFoundError as e:
             raise FileNotFoundError(f"TiS2 dataset not found: {e}") from e
 
     elif data_source == "graphene":
         try:
-            dense_mat = np.load("tests/data/data_dense_graphene_3x3.npy").astype(np.float64)
-            coo_ds = scipy.sparse.load_npz("tests/data/data_sparse_graphene_3x3.npz")
+            dense_mat = np.load(f"{data_path}/data_dense_graphene_3x3.npy").astype(np.float64)
+            coo_ds = scipy.sparse.load_npz(f"{data_path}/data_sparse_graphene_3x3.npz")
         except FileNotFoundError as e:
             raise FileNotFoundError(f"Graphene dataset not found: {e}") from e
 
     elif data_source == "ZrS2":
         try:
-            dense_mat = np.load("tests/data/data_dense_ZrS2_3x3.npy").astype(np.float64)
-            coo_ds = scipy.sparse.load_npz("tests/data/data_sparse_ZrS2_3x3.npz")
+            dense_mat = np.load(f"{data_path}/data_dense_ZrS2_3x3.npy").astype(np.float64)
+            coo_ds = scipy.sparse.load_npz(f"{data_path}/data_sparse_ZrS2_3x3.npz")
         except FileNotFoundError as e:
             raise FileNotFoundError(f"ZrS2 dataset not found: {e}") from e
 
@@ -122,13 +125,13 @@ def load_data(data_source: str, args) -> tuple:
 def benchmark_algorithm(name: str, func, repeats: int = 3, *args, **kwargs) -> dict:
     """
     Benchmark a single algorithm multiple times and return results with statistics.
-    
+
     Args:
         name: Name of the algorithm
         func: Function to benchmark
         repeats: Number of times to repeat the benchmark
         *args, **kwargs: Arguments to pass to the function
-        
+
     Returns:
         Dictionary with benchmark results
     """
@@ -183,7 +186,7 @@ def benchmark_algorithm(name: str, func, repeats: int = 3, *args, **kwargs) -> d
         "std_time": std_time,
         "error": final_error,
         "valid_runs": len(valid_times),
-        "total_runs": repeats
+        "total_runs": repeats,
     }
 
 
@@ -227,11 +230,7 @@ def main():
     results = {}
 
     # Benchmark NumPy baseline
-    baseline_result = benchmark_algorithm(
-        "NumPy baseline", 
-        lambda: np.dot(dense_mat, coo_ds.todense()), 
-        args.repeats
-    )
+    baseline_result = benchmark_algorithm("NumPy baseline", lambda: np.dot(dense_mat, coo_ds.todense()), args.repeats)
     results["numpy"] = baseline_result
 
     if baseline_result["result"] is None:
@@ -247,7 +246,7 @@ def main():
             args.repeats,
         )
         results["omp_sparse"] = v4_result
-        
+
         if v4_result["result"] is not None:
             correct = np.allclose(baseline_result["result"], v4_result["result"])
             results["omp_sparse"]["correct"] = correct
@@ -260,13 +259,7 @@ def main():
 
     except Exception as e:
         log(f"Error benchmarking OMP Sparse: {e}")
-        results["omp_sparse"] = {
-            "result": None,
-            "mean_time": 0.0,
-            "std_time": 0.0,
-            "error": str(e),
-            "correct": False
-        }
+        results["omp_sparse"] = {"result": None, "mean_time": 0.0, "std_time": 0.0, "error": str(e), "correct": False}
 
     # Performance summary
     log("\n" + "=" * 60)
@@ -287,7 +280,7 @@ def main():
                 speedup = baseline_time / data["mean_time"] if data["mean_time"] > 0 else float("inf")
                 speedup_str = f"{speedup:.2f}x"
                 status = "✓" if data.get("correct", False) else "✗"
-            
+
             time_str = f"{data['mean_time']:.6f} ± {data['std_time']:.6f}"
             log(f"{name:<20} {time_str:<20} {speedup_str:<10} {status}")
 

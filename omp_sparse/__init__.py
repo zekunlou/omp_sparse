@@ -21,6 +21,7 @@ import scipy.sparse
 try:
     # full path: omp_sparse.lib.omp_sparse.omp_sparse_mod.dense_dot_sparse_v4
     from omp_sparse.lib.omp_sparse import omp_sparse_mod as _omp_sparse_mod
+
     _MODULE_AVAILABLE = True
 except ImportError as e:
     warnings.warn(
@@ -239,6 +240,75 @@ class OMPSparseMultiplier:
             "nnz": sparse_matrix.nnz,
             "repeats": repeats,
         }
+
+
+def benchmark_dense_dot_dense(
+    dense_matrix: np.ndarray,
+    sparse_matrix: Union[scipy.sparse.coo_matrix, scipy.sparse.csc_matrix],
+    repeats: int = 3,
+) -> dict:
+    """
+    Benchmark dense @ dense matrix multiplication for performance comparison.
+
+    This function performs the same computation as the sparse multiplication
+    but using dense matrices with numpy's standard dot product, providing
+    a baseline for performance comparison.
+
+    Args:
+        dense_matrix: Dense matrix of shape (M, K) with dtype float64
+        sparse_matrix: Sparse matrix of shape (K, N) - will be converted to dense
+        repeats: Number of times to repeat the benchmark
+
+    Returns:
+        Dictionary containing timing and matrix information for comparison
+    """
+    import gc
+    import time
+
+    # Convert sparse to dense for comparison
+    dense_sparse = sparse_matrix.todense()
+
+    # Ensure proper types
+    if dense_matrix.dtype != np.float64:
+        dense_matrix = dense_matrix.astype(np.float64)
+    if dense_sparse.dtype != np.float64:
+        dense_sparse = dense_sparse.astype(np.float64)
+
+    # Run multiple times and collect statistics
+    times = []
+    results = []
+
+    for _ in range(repeats):
+        gc.collect()  # Clean memory before each run
+
+        start_time = time.time()
+        result = np.dot(dense_matrix, dense_sparse)
+        end_time = time.time()
+
+        times.append(end_time - start_time)
+        results.append(result)
+
+        gc.collect()  # Clean memory after each run
+
+    # Calculate statistics
+    mean_time = np.mean(times)
+    std_time = np.std(times) if len(times) > 1 else 0.0
+
+    # Calculate matrix properties
+    M, K = dense_matrix.shape
+    N = sparse_matrix.shape[1]
+    density = sparse_matrix.nnz / (K * N)
+
+    return {
+        "algorithm": "numpy_dense",
+        "mean_time": mean_time,
+        "std_time": std_time,
+        "correct": True,  # This is the baseline
+        "matrix_shape": (M, K, N),
+        "density": density,
+        "nnz": sparse_matrix.nnz,
+        "repeats": repeats,
+    }
 
 
 def multiply_dense_sparse(
