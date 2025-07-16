@@ -32,7 +32,7 @@ subroutine dense_dot_sparse_v4(dense_mat, csc_indptr, csc_indices, csc_data, m, 
     !$omp parallel default(private) shared(result, dense_mat, csc_indptr, csc_indices, csc_data, m, k, n)
 
     !$omp single
-    print *, "Using", omp_get_num_threads(), "threads in OpenMP"
+    print *, "omp_sparse: Using", omp_get_num_threads(), "threads in OpenMP"
     !$omp end single
 
     !$omp do schedule(dynamic, 16)

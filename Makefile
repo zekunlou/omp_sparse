@@ -29,8 +29,8 @@ F2PY_FLAGS_MESON = -c --backend meson --f90flags="$(FFLAGS)" --opt="-O2" -lgomp 
 
 .PHONY: all clean install test system meson develop
 
-# Default target - use system f2py for maximum compatibility
-all: system
+# Default target - use meson backend for modern Python/NumPy compatibility
+all: meson
 
 # Create lib directory if it doesn't exist
 $(LIBDIR):
@@ -64,12 +64,8 @@ sdist:
 	$(PYTHON) -m build --sdist
 
 # Run tests
-test: system
-	$(PYTHON) -m pytest tests/ -v
-
-# Run benchmarks
-benchmark: system
-	$(PYTHON) -m pytest tests/test_benchmark.py -v --benchmark-only
+test: meson
+	$(PYTHON) -m pytest tests/test_omp_sparse.py -v
 
 # Clean build artifacts
 clean:
@@ -88,8 +84,8 @@ clean:
 # Help target
 help:
 	@echo "Available targets:"
-	@echo "  make         - Build with system f2py (default, most compatible)"
-	@echo "  make system  - Build with system f2py"
+	@echo "  make         - Build with meson backend (default, modern Python/NumPy)"
+	@echo "  make system  - Build with system f2py (legacy, Python<3.12/NumPy<1.23)"
 	@echo "  make meson   - Build with meson backend"
 	@echo "  make develop - Install in development mode"
 	@echo "  make install - Install package"
