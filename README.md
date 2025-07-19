@@ -8,11 +8,13 @@ A high-performance Python package for OpenMP-accelerated dense-sparse matrix mul
 
 ## Features
 
-- **High Performance**: OpenMP-parallelized Fortran implementation with up to 8x speedup (of course it depends)
-- **Optimized Algorithm**: v4 algorithm provides excellent performance across matrix sizes and sparsity patterns
-- **Scientific Computing Ready**: Tested on real computational chemistry datasets
+- **Dual Algorithm Support**: Both v4 (general CSC) and v11 (segmented) algorithms for different matrix types
+- **High Performance**: OpenMP-parallelized Fortran implementation with up to 2.3x speedup over NumPy
+- **Intelligent Algorithm Selection**: Automatic sparsity pattern analysis with smart fallback mechanisms
+- **Scientific Computing Ready**: Validated on real computational chemistry datasets (water, graphene, TiS2)
 - **Easy Integration**: Clean Python API with NumPy and SciPy compatibility
 - **Memory Efficient**: Automatic memory management and garbage collection
+- **Comprehensive Testing**: Full test suite with correctness validation and edge case handling
 
 ## Installation
 
@@ -63,15 +65,36 @@ from omp_sparse import OMPSparseMultiplier, multiply_dense_sparse
 dense_matrix = np.random.random((1000, 2000)).astype(np.float64)
 sparse_matrix = sp.random(2000, 3000, density=0.02, format='csc')
 
-# Method 1: Using the multiplier class
-multiplier = OMPSparseMultiplier(algorithm="v4")
-result = multiplier.multiply(dense_matrix, sparse_matrix)
+# Method 1: Using v4 algorithm (general purpose)
+multiplier_v4 = OMPSparseMultiplier(algorithm="v4")
+result_v4 = multiplier_v4.multiply(dense_matrix, sparse_matrix)
 
-# Method 2: Using the convenience function
+# Method 2: Using v11 algorithm (segmented matrices with auto-fallback)
+multiplier_v11 = OMPSparseMultiplier(algorithm="v11")
+result_v11 = multiplier_v11.multiply(dense_matrix, sparse_matrix)
+
+# Method 3: Using convenience function
 result = multiply_dense_sparse(dense_matrix, sparse_matrix, algorithm="v4")
 
-print(f"Result shape: {result.shape}")
-print(f"Result type: {type(result)}")
+print(f"Result shape: {result_v4.shape}")
+print(f"Results match: {np.allclose(result_v4, result_v11)}")
+```
+
+### Algorithm Selection Guide
+
+```python
+from omp_sparse.utils import analyze_sparsity_pattern
+
+# Analyze your sparse matrix
+analysis = analyze_sparsity_pattern(sparse_matrix)
+print(f"Segmented compatible: {analysis['is_segmented_compatible']}")
+print(f"Compatibility ratio: {analysis['compatibility_ratio']:.3f}")
+
+# Choose algorithm based on sparsity pattern
+if analysis['is_segmented_compatible']:
+    algorithm = "v11"  # May have different performance characteristics
+else:
+    algorithm = "v4"   # Recommended for general use
 ```
 
 ### Benchmarking
@@ -113,23 +136,30 @@ print(f"\nSpeedup over dense multiplication: {speedup:.2f}x")
 
 ## Command Line Interface
 
-The package includes a command-line benchmarking tool:
+The package includes a command-line benchmarking tool with algorithm comparison support:
 
 ```bash
-# set number of threads
-# export MKL_NUM_THREADS=16 && export OMP_NUM_THREADS=16 && <other commands>
+# Set number of threads for optimal performance
+export OMP_NUM_THREADS=8 && export MKL_NUM_THREADS=8
+
+# Benchmark single algorithm
+python -m omp_sparse.benchmark --data water --algorithm v4
+
+# Compare v4 vs v11 algorithms
+python -m omp_sparse.benchmark --data water --algorithm v4 v11 --repeats 5
+
+# Test with scientific datasets
+python -m omp_sparse.benchmark --data graphene --algorithm v4 v11
+python -m omp_sparse.benchmark --data TiS2 --algorithm v4 v11
 
 # Benchmark with random data
-omp-sparse-benchmark --data random --M 1000 --K 2000 --N 3000 --density 0.02
-
-# Benchmark with scientific datasets (if available)
-omp-sparse-benchmark --data water
-omp-sparse-benchmark --data graphene
-omp-sparse-benchmark --data TiS2
-
-# Custom parameters
-omp-sparse-benchmark --data random --M 500 --K 1000 --N 1500 --repeats 5
+python -m omp_sparse.benchmark --data random --M 1000 --K 2000 --N 3000 --density 0.02 --algorithm v4 v11
 ```
+
+**New Features:**
+- **Multi-algorithm comparison**: Compare v4 vs v11 performance in a single run
+- **Automatic sparsity analysis**: Shows matrix compatibility with v11 algorithm
+- **Enhanced output**: Performance comparison tables and statistical analysis
 
 ## Performance Tuning
 
@@ -155,22 +185,41 @@ export MKL_DOMAIN_NUM_THREADS="MKL_DOMAIN_BLAS=8"
 
 ## Algorithm Details
 
-### v4 Algorithm
+### v4 Algorithm (Recommended)
 
-The v4 algorithm is the current implementation, featuring:
+The v4 algorithm provides excellent general-purpose performance:
 
+- **CSC format optimization**: Processes compressed sparse column format efficiently
 - **Column-wise parallelization**: Distributes sparse matrix columns across threads
 - **Dynamic scheduling**: Automatically balances load across threads
-- **Vectorized operations**: Optimized inner loops for better performance
-- **CSC format optimization**: Efficient access patterns for compressed sparse columns
+- **O(nnz) complexity**: Only processes non-zero elements
+- **Proven performance**: 1.5-2.3x speedup over NumPy on real datasets
+
+### v11 Algorithm (Segmented Sparse)
+
+The v11 algorithm is specialized for matrices with specific sparsity patterns:
+
+- **Segmented format**: Optimized for matrices where each row has one contiguous segment
+- **Column-wise parallelization**: Avoids race conditions by parallelizing over output columns
+- **Automatic compatibility detection**: Falls back to v4 for incompatible matrices
+- **O(N×K) complexity**: Trades computation for potential memory access improvements
+- **Research foundation**: Enables future cache-optimization techniques
+
+### Performance Characteristics
+
+| Algorithm | Best For | Complexity | Typical Performance |
+|-----------|----------|------------|-------------------|
+| **v4** | General sparse matrices | O(nnz) | 1.5-2.3x vs NumPy |
+| **v11** | Segmented sparse matrices | O(N×K) | Research/specialized use |
 
 ### Technical Specifications
 
 - **Input**: Dense matrix (MxK, float64) and sparse matrix (KxN, COO/CSC)
 - **Output**: Dense result matrix (MxN, float64)
-- **Parallelization**: OpenMP with dynamic scheduling
+- **Parallelization**: OpenMP with static/dynamic scheduling
 - **Memory**: Automatic contiguous array conversion
 - **Precision**: Double precision (float64) throughout
+- **Compatibility**: Both algorithms support the same matrix formats
 
 ## Testing
 
@@ -182,6 +231,7 @@ make test
 
 # Run specific test categories
 python -m pytest tests/test_omp_sparse.py::TestMatrixMultiplication -v
+python -m pytest tests/test_omp_sparse.py::TestV11Algorithm -v
 python -m pytest tests/test_omp_sparse.py::TestPerformance -v
 python -m pytest tests/test_omp_sparse.py::TestEdgeCases -v
 
@@ -195,7 +245,7 @@ python -m pytest tests/test_omp_sparse.py::TestScientificDatasets -v
 
 ```python
 class OMPSparseMultiplier:
-    def __init__(self, algorithm: str = "v4")
+    def __init__(self, algorithm: str = "v4")  # "v4" or "v11"
     def multiply(self, dense_matrix: np.ndarray, sparse_matrix: Union[coo_matrix, csc_matrix]) -> np.ndarray
     def benchmark(self, dense_matrix: np.ndarray, sparse_matrix: Union[coo_matrix, csc_matrix], 
                   baseline_result: Optional[np.ndarray] = None, repeats: int = 3) -> dict
@@ -203,12 +253,16 @@ class OMPSparseMultiplier:
 
 ### Convenience Functions
 
-```python
 def multiply_dense_sparse(dense_matrix: np.ndarray, sparse_matrix: Union[coo_matrix, csc_matrix], 
-                         algorithm: str = "v4") -> np.ndarray
+                         algorithm: str = "v4") -> np.ndarray  # "v4" or "v11"
 
-def get_available_algorithms() -> List[str]
+def get_available_algorithms() -> List[str]  # Returns ["v4", "v11"]
 def is_module_available() -> bool
+
+# Sparsity analysis utilities
+from omp_sparse.utils import analyze_sparsity_pattern, convert_to_segmented_format
+def analyze_sparsity_pattern(sparse_matrix) -> dict
+def convert_to_segmented_format(sparse_matrix) -> Tuple[np.ndarray, np.ndarray, np.ndarray]
 ```
 
 ## Development
