@@ -1,7 +1,7 @@
 """
 Comprehensive test suite for omp_sparse package.
 
-Tests correctness, performance, and edge cases for the v4 algorithm.
+Tests correctness, performance, and edge cases for v4 and v11 algorithms.
 """
 
 import gc
@@ -30,7 +30,8 @@ class TestOMPSparseMultiplier:
         """Test available algorithms."""
         algorithms = omp_sparse.get_available_algorithms()
         assert "v4" in algorithms, "v4 algorithm should be available"
-        assert len(algorithms) >= 1, "At least one algorithm should be available"
+        assert "v11" in algorithms, "v11 algorithm should be available"
+        assert len(algorithms) >= 2, "Both v4 and v11 algorithms should be available"
 
     def test_initialization(self):
         """Test multiplier initialization."""
@@ -85,6 +86,109 @@ class TestOMPSparseMultiplier:
         empty_sparse = scipy.sparse.csc_matrix((200, 300))
         with pytest.raises(ValueError, match="Sparse matrix has no non-zero elements"):
             multiplier.multiply(dense_mat, empty_sparse)
+
+    def test_v11_initialization(self):
+        """Test v11 algorithm initialization."""
+        # Valid v11 initialization
+        multiplier = OMPSparseMultiplier("v11")
+        assert multiplier.algorithm == "v11"
+
+
+class TestV11Algorithm:
+    """Test v11 segmented sparse algorithm."""
+
+    @pytest.fixture
+    def segmented_matrix(self):
+        """Create a test matrix with segmented structure."""
+        # 6x8 matrix with one segment per row
+        rows, cols = 6, 8
+        matrix = scipy.sparse.lil_matrix((rows, cols))
+        
+        # Row 0: segment from col 2-4
+        matrix[0, 2:5] = [1.0, 2.0, 3.0]
+        # Row 1: segment from col 0-1  
+        matrix[1, 0:2] = [4.0, 5.0]
+        # Row 2: empty row
+        # Row 3: segment from col 5-7
+        matrix[3, 5:8] = [6.0, 7.0, 8.0]
+        # Row 4: single element (segment length 1)
+        matrix[4, 3] = 9.0
+        # Row 5: segment from col 1-3
+        matrix[5, 1:4] = [10.0, 11.0, 12.0]
+        
+        return matrix.tocsr()
+
+    @pytest.fixture
+    def non_segmented_matrix(self):
+        """Create a test matrix with non-segmented structure."""
+        # 4x6 matrix with multiple segments per row
+        rows, cols = 4, 6
+        matrix = scipy.sparse.lil_matrix((rows, cols))
+        
+        # Row 0: two segments [0-1] and [4-5]
+        matrix[0, 0:2] = [1.0, 2.0]
+        matrix[0, 4:6] = [3.0, 4.0]
+        # Row 1: three segments [1], [3], [5]
+        matrix[1, 1] = 5.0
+        matrix[1, 3] = 6.0
+        matrix[1, 5] = 7.0
+        
+        return matrix.tocsr()
+
+    def test_v11_correctness_segmented(self, segmented_matrix):
+        """Test v11 correctness with segmented matrices."""
+        # Create dense matrix
+        M, K = 3, segmented_matrix.shape[0]
+        dense_matrix = np.random.random((M, K)).astype(np.float64)
+        
+        # Test v4 and v11 produce same results
+        multiplier_v4 = OMPSparseMultiplier("v4")
+        multiplier_v11 = OMPSparseMultiplier("v11")
+        
+        result_v4 = multiplier_v4.multiply(dense_matrix, segmented_matrix)
+        result_v11 = multiplier_v11.multiply(dense_matrix, segmented_matrix)
+        
+        assert np.allclose(result_v4, result_v11, rtol=1e-10, atol=1e-10), "v11 and v4 results should match"
+
+    def test_v11_fallback_non_segmented(self, non_segmented_matrix):
+        """Test v11 fallback to v4 for non-segmented matrices."""
+        # Create dense matrix
+        M, K = 3, non_segmented_matrix.shape[0]
+        dense_matrix = np.random.random((M, K)).astype(np.float64)
+        
+        # Test that v11 falls back to v4 and generates warning
+        multiplier_v11 = OMPSparseMultiplier("v11")
+        multiplier_v4 = OMPSparseMultiplier("v4")
+        
+        import warnings
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            result_v11 = multiplier_v11.multiply(dense_matrix, non_segmented_matrix)
+            
+            # Check that warning was generated
+            assert len(w) > 0, "Warning should be generated for non-segmented matrix"
+            assert "not compatible with v11" in str(w[0].message)
+        
+        result_v4 = multiplier_v4.multiply(dense_matrix, non_segmented_matrix)
+        
+        # Results should match since v11 fell back to v4
+        assert np.allclose(result_v4, result_v11, rtol=1e-10, atol=1e-10), "Fallback results should match v4"
+
+    def test_v11_sparsity_pattern_analysis(self, segmented_matrix, non_segmented_matrix):
+        """Test sparsity pattern analysis."""
+        from omp_sparse.utils import analyze_sparsity_pattern
+        
+        # Test segmented matrix
+        analysis_seg = analyze_sparsity_pattern(segmented_matrix)
+        assert analysis_seg['is_segmented_compatible'], "Segmented matrix should be compatible"
+        assert analysis_seg['compatibility_ratio'] == 1.0, "Compatibility ratio should be 1.0"
+        assert analysis_seg['max_segments'] <= 1, "Max segments should be 1 or 0"
+        
+        # Test non-segmented matrix
+        analysis_non_seg = analyze_sparsity_pattern(non_segmented_matrix)
+        assert not analysis_non_seg['is_segmented_compatible'], "Non-segmented matrix should not be compatible"
+        assert analysis_non_seg['compatibility_ratio'] < 1.0, "Compatibility ratio should be < 1.0"
+        assert analysis_non_seg['max_segments'] > 1, "Max segments should be > 1"
 
 
 class TestMatrixMultiplication:

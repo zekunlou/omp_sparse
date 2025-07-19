@@ -4,6 +4,7 @@
 docs/
 examples/
 CLAUDE.md
+TODO.md
 tests/quick_test.py
 data/
 validate_installation.py

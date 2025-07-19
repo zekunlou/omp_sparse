@@ -16,6 +16,7 @@ import scipy.sparse
 from scipy.sparse import coo_matrix
 
 from . import OMPSparseMultiplier
+from .utils import analyze_sparsity_pattern
 
 file_path = os.path.abspath(__file__)
 data_path = os.path.abspath(f"{file_path}/../../data")
@@ -118,6 +119,16 @@ def load_data(data_source: str, args) -> tuple:
         raise ValueError(f"Invalid sparse matrix: {NNZ} non-zero elements > {K * N} total elements")
 
     log(f"{dense_mat.shape=}, {coo_ds.shape=}, {coo_ds.nnz=}, density={100 * density:.2f}%")
+    
+    # Analyze sparsity pattern for v11 compatibility
+    log("Analyzing sparsity pattern...")
+    analysis = analyze_sparsity_pattern(coo_ds)
+    log(f"Segmented compatible: {analysis['is_segmented_compatible']}")
+    log(f"Compatibility ratio: {analysis['compatibility_ratio']:.3f}")
+    log(f"Max segments per row: {analysis['max_segments']}")
+    
+    if not analysis['is_segmented_compatible']:
+        log("⚠️  Dataset is not fully compatible with v11 algorithm (will fall back to v4)")
 
     return dense_mat, coo_ds, M, K, N, NNZ
 
@@ -213,7 +224,9 @@ def main():
     parser.add_argument("--N", type=int, default=3000, help="Number of columns in sparse matrix (for random data)")
     parser.add_argument("--density", type=float, default=0.02, help="Density of sparse matrix (for random data)")
     parser.add_argument("--repeats", type=int, default=3, help="Number of times to repeat each test (default: 3)")
-    parser.add_argument("--algorithm", default="v4", help="Algorithm to use (default: v4)")
+    parser.add_argument("--algorithm", nargs="+", default=["v4"], 
+                        choices=["v4", "v11"], 
+                        help="Algorithm(s) to benchmark (default: v4). Use multiple values to compare: --algorithm v4 v11")
     args = parser.parse_args()
 
     # Print environment variables for debugging
@@ -237,29 +250,34 @@ def main():
         log("ERROR: NumPy baseline failed, cannot validate other algorithms")
         return 1
 
-    # Benchmark v4 algorithm
-    try:
-        multiplier = OMPSparseMultiplier(args.algorithm)
-        v4_result = benchmark_algorithm(
-            f"OMP Sparse {args.algorithm}",
-            lambda: multiplier.multiply(dense_mat, coo_ds),
-            args.repeats,
-        )
-        results["omp_sparse"] = v4_result
+    # Benchmark specified algorithms
+    for algorithm in args.algorithm:
+        try:
+            multiplier = OMPSparseMultiplier(algorithm)
+            # Use a closure to properly capture the multiplier variable
+            def create_benchmark_func(mult):
+                return lambda: mult.multiply(dense_mat, coo_ds)
+            
+            alg_result = benchmark_algorithm(
+                f"OMP Sparse {algorithm}",
+                create_benchmark_func(multiplier),
+                args.repeats,
+            )
+            results[f"omp_sparse_{algorithm}"] = alg_result
 
-        if v4_result["result"] is not None:
-            correct = np.allclose(baseline_result["result"], v4_result["result"])
-            results["omp_sparse"]["correct"] = correct
-            log(f"Result correct: {correct}")
-        else:
-            results["omp_sparse"]["correct"] = False
+            if alg_result["result"] is not None:
+                correct = np.allclose(baseline_result["result"], alg_result["result"], rtol=1e-10, atol=1e-10)
+                results[f"omp_sparse_{algorithm}"]["correct"] = correct
+                log(f"Result correct: {correct}")
+            else:
+                results[f"omp_sparse_{algorithm}"]["correct"] = False
 
-        # Force garbage collection after algorithm test
-        gc.collect()
+            # Force garbage collection after algorithm test
+            gc.collect()
 
-    except Exception as e:
-        log(f"Error benchmarking OMP Sparse: {e}")
-        results["omp_sparse"] = {"result": None, "mean_time": 0.0, "std_time": 0.0, "error": str(e), "correct": False}
+        except Exception as e:
+            log(f"Error benchmarking OMP Sparse {algorithm}: {e}")
+            results[f"omp_sparse_{algorithm}"] = {"result": None, "mean_time": 0.0, "std_time": 0.0, "error": str(e), "correct": False}
 
     # Performance summary
     log("\n" + "=" * 60)
@@ -267,9 +285,11 @@ def main():
     log("=" * 60)
 
     valid_results = [(k, v) for k, v in results.items() if v.get("correct", False) or k == "numpy"]
+    omp_results = [(k, v) for k, v in valid_results if k.startswith("omp_sparse_")]
+    
     if valid_results:
-        log(f"{'Algorithm':<20} {'Time (s)':<20} {'Speedup':<10} {'Status'}")
-        log("-" * 60)
+        log(f"{'Algorithm':<20} {'Time (s)':<20} {'vs NumPy':<12} {'Status'}")
+        log("-" * 65)
 
         baseline_time = results["numpy"]["mean_time"]
         for name, data in valid_results:
@@ -282,7 +302,28 @@ def main():
                 status = "✓" if data.get("correct", False) else "✗"
 
             time_str = f"{data['mean_time']:.6f} ± {data['std_time']:.6f}"
-            log(f"{name:<20} {time_str:<20} {speedup_str:<10} {status}")
+            display_name = name.replace("omp_sparse_", "OMP ") if name.startswith("omp_sparse_") else name
+            log(f"{display_name:<20} {time_str:<20} {speedup_str:<12} {status}")
+
+        # Inter-algorithm comparison if multiple OMP algorithms were tested
+        if len(omp_results) > 1:
+            log(f"\n{'Algorithm Comparison':<40}")
+            log("-" * 40)
+            
+            # Sort by performance (fastest first)
+            omp_sorted = sorted(omp_results, key=lambda x: x[1]["mean_time"])
+            fastest_name, fastest_data = omp_sorted[0]
+            fastest_time = fastest_data["mean_time"]
+            
+            for name, data in omp_sorted:
+                if name == fastest_name:
+                    comparison = "fastest"
+                else:
+                    ratio = data["mean_time"] / fastest_time
+                    comparison = f"{ratio:.2f}x slower"
+                
+                display_name = name.replace("omp_sparse_", "")
+                log(f"{display_name:<20} {comparison}")
 
         # Show failed algorithms
         failed_results = [(k, v) for k, v in results.items() if v.get("error") and k != "numpy"]
@@ -290,7 +331,8 @@ def main():
             log("\nFailed algorithms:")
             for name, data in failed_results:
                 time_str = f"{data['mean_time']:.6f} ± {data['std_time']:.6f}"
-                log(f"{name:<20} {time_str:<20} {'N/A':<10} ERROR")
+                display_name = name.replace("omp_sparse_", "OMP ") if name.startswith("omp_sparse_") else name
+                log(f"{display_name:<20} {time_str:<20} {'N/A':<12} ERROR")
     else:
         log("No valid results to compare")
 
