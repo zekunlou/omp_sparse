@@ -8,15 +8,13 @@ import argparse
 import gc
 import os
 import sys
-import time
-from typing import Optional
 
 import numpy as np
 import scipy.sparse
 from scipy.sparse import coo_matrix
 
 from . import OMPSparseMultiplier
-from .utils import analyze_sparsity_pattern
+from .utils import analyze_sparsity_pattern, benchmark_function
 
 file_path = os.path.abspath(__file__)
 data_path = os.path.abspath(f"{file_path}/../../data")
@@ -136,6 +134,8 @@ def load_data(data_source: str, args) -> tuple:
 def benchmark_algorithm(name: str, func, repeats: int = 3, *args, **kwargs) -> dict:
     """
     Benchmark a single algorithm multiple times and return results with statistics.
+    
+    This is a wrapper around the unified benchmark_function from utils.
 
     Args:
         name: Name of the algorithm
@@ -147,57 +147,24 @@ def benchmark_algorithm(name: str, func, repeats: int = 3, *args, **kwargs) -> d
         Dictionary with benchmark results
     """
     log(f"--- {name} ---")
-    times = []
-    results = []
-    errors = []
-
-    for i in range(repeats):
-        # Force garbage collection before each run
-        gc.collect()
-
-        start_time = time.time()
-        try:
-            result = func(*args, **kwargs)
-            end_time = time.time()
-            runtime = end_time - start_time
-            times.append(runtime)
-            results.append(result)
-            errors.append(None)
-        except Exception as e:
-            end_time = time.time()
-            runtime = end_time - start_time
-            times.append(runtime)
-            results.append(None)
-            errors.append(str(e))
-            log(f"{name} FAILED on run {i + 1}: {e}")
-
-        # Force garbage collection after each run
-        gc.collect()
-
-    # Calculate statistics
-    valid_times = [t for t, e in zip(times, errors) if e is None]
-
-    if valid_times:
-        mean_time = np.mean(valid_times)
-        std_time = np.std(valid_times) if len(valid_times) > 1 else 0.0
-        # Use the first successful result for correctness checking
-        final_result = next((r for r, e in zip(results, errors) if e is None), None)
-        final_error = None
-        log(f"{name} time: {mean_time:.6f} ± {std_time:.6f} seconds (n={len(valid_times)})")
+    
+    # Use unified benchmarking function from utils
+    result = benchmark_function(func, *args, repeats=repeats, name=name, **kwargs)
+    
+    # Log results
+    if result["error"] is None:
+        log(f"{name} time: {result['mean_time']:.6f} ± {result['std_time']:.6f} seconds (n={result['valid_runs']})")
     else:
-        mean_time = np.mean(times)
-        std_time = np.std(times) if len(times) > 1 else 0.0
-        final_result = None
-        final_error = errors[0] if errors else "Unknown error"
-        log(f"{name} FAILED: {final_error}")
-
+        log(f"{name} FAILED: {result['error']}")
+    
+    # Rename some fields for backwards compatibility
     return {
-        "result": final_result,
-        "mean_time": mean_time,
-        "std_time": std_time,
-        "error": final_error,
-        "valid_runs": len(valid_times),
-        "total_runs": repeats,
+        "result": result["result"],
+        "mean_time": result["mean_time"],
+        "std_time": result["std_time"],
+        "error": result["error"],
+        "valid_runs": result["valid_runs"],
+        "total_runs": result["total_runs"],
     }
 
 

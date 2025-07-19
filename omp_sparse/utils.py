@@ -1,12 +1,15 @@
 """
 Utility functions for omp_sparse package.
 
-Contains sparsity pattern analysis and format conversion utilities.
+Contains sparsity pattern analysis, format conversion utilities, and benchmarking functions.
 """
+
+import gc
+import time
+from typing import Tuple, Optional, Dict, Any, Callable, Union
 
 import numpy as np
 import scipy.sparse
-from typing import Tuple, Optional, Dict, Any
 
 
 def analyze_sparsity_pattern(sparse_matrix: scipy.sparse.spmatrix) -> Dict[str, Any]:
@@ -183,3 +186,179 @@ def validate_segmented_format(row_start_col: np.ndarray, row_segment_len: np.nda
             return False
     
     return True
+
+
+# =============================================================================
+# Benchmarking Utilities
+# =============================================================================
+
+def benchmark_function(func: Callable, *args, repeats: int = 3, name: str = "Function", 
+                      validate_result: Optional[Callable] = None, 
+                      baseline_result: Optional[np.ndarray] = None, **kwargs) -> Dict[str, Any]:
+    """
+    Generic function benchmarking utility with timing and validation.
+    
+    Args:
+        func: Function to benchmark
+        *args: Positional arguments for the function
+        repeats: Number of times to repeat the benchmark
+        name: Name of the function for logging
+        validate_result: Optional function to validate results
+        baseline_result: Optional baseline result for correctness checking
+        **kwargs: Keyword arguments for the function
+        
+    Returns:
+        Dictionary with benchmark results including timing and correctness info
+    """
+    times = []
+    results = []
+    errors = []
+    
+    for i in range(repeats):
+        gc.collect()
+        
+        start_time = time.time()
+        try:
+            result = func(*args, **kwargs)
+            end_time = time.time()
+            runtime = end_time - start_time
+            times.append(runtime)
+            results.append(result)
+            errors.append(None)
+        except Exception as e:
+            end_time = time.time()
+            runtime = end_time - start_time
+            times.append(runtime)
+            results.append(None)
+            errors.append(str(e))
+        
+        gc.collect()
+    
+    # Calculate statistics
+    valid_times = [t for t, e in zip(times, errors) if e is None]
+    valid_results = [r for r, e in zip(results, errors) if e is None]
+    
+    if valid_times:
+        mean_time = np.mean(valid_times)
+        std_time = np.std(valid_times) if len(valid_times) > 1 else 0.0
+        final_result = valid_results[0] if valid_results else None
+        final_error = None
+    else:
+        mean_time = np.mean(times)
+        std_time = np.std(times) if len(times) > 1 else 0.0
+        final_result = None
+        final_error = errors[0] if errors else "Unknown error"
+    
+    # Validate result if baseline provided
+    correct = None
+    if final_result is not None and baseline_result is not None:
+        correct = np.allclose(baseline_result, final_result, rtol=1e-10, atol=1e-10)
+    elif validate_result is not None and final_result is not None:
+        correct = validate_result(final_result)
+    
+    return {
+        "name": name,
+        "result": final_result,
+        "mean_time": mean_time,
+        "std_time": std_time,
+        "min_time": np.min(valid_times) if valid_times else float('inf'),
+        "max_time": np.max(valid_times) if valid_times else float('inf'),
+        "error": final_error,
+        "correct": correct,
+        "valid_runs": len(valid_times),
+        "total_runs": repeats,
+        "times": times
+    }
+
+
+def benchmark_numpy_dense_multiplication(dense_matrix: np.ndarray, 
+                                        sparse_matrix: Union[scipy.sparse.coo_matrix, scipy.sparse.csc_matrix],
+                                        repeats: int = 3) -> Dict[str, Any]:
+    """
+    Benchmark NumPy dense @ dense matrix multiplication as baseline.
+    
+    Args:
+        dense_matrix: Dense matrix of shape (M, K) with dtype float64
+        sparse_matrix: Sparse matrix of shape (K, N) - will be converted to dense
+        repeats: Number of times to repeat the benchmark
+        
+    Returns:
+        Dictionary containing timing and matrix information for comparison
+    """
+    # Convert sparse to dense for comparison
+    dense_sparse = sparse_matrix.todense()
+    
+    # Ensure proper types
+    if dense_matrix.dtype != np.float64:
+        dense_matrix = dense_matrix.astype(np.float64)
+    if dense_sparse.dtype != np.float64:
+        dense_sparse = dense_sparse.astype(np.float64)
+    
+    def numpy_multiply():
+        return np.dot(dense_matrix, dense_sparse)
+    
+    result = benchmark_function(
+        func=numpy_multiply,
+        repeats=repeats,
+        name="NumPy dense @ dense"
+    )
+    
+    # Add matrix properties
+    M, K = dense_matrix.shape
+    N = sparse_matrix.shape[1]
+    density = sparse_matrix.nnz / (K * N)
+    
+    result.update({
+        "algorithm": "numpy_dense",
+        "matrix_shape": (M, K, N),
+        "density": density,
+        "nnz": sparse_matrix.nnz
+    })
+    
+    return result
+
+
+def benchmark_sparse_algorithm(multiplier, dense_matrix: np.ndarray,
+                              sparse_matrix: Union[scipy.sparse.coo_matrix, scipy.sparse.csc_matrix],
+                              baseline_result: Optional[np.ndarray] = None,
+                              repeats: int = 3) -> Dict[str, Any]:
+    """
+    Benchmark a sparse matrix multiplication algorithm.
+    
+    Args:
+        multiplier: OMPSparseMultiplier instance
+        dense_matrix: Dense matrix for multiplication
+        sparse_matrix: Sparse matrix for multiplication  
+        baseline_result: Optional baseline result for correctness validation
+        repeats: Number of times to repeat the benchmark
+        
+    Returns:
+        Dictionary containing timing and correctness information
+    """
+    # Compute baseline if not provided
+    if baseline_result is None:
+        baseline_result = np.dot(dense_matrix, sparse_matrix.todense())
+    
+    def multiply_func():
+        return multiplier.multiply(dense_matrix, sparse_matrix)
+    
+    result = benchmark_function(
+        func=multiply_func,
+        repeats=repeats,
+        name=f"OMP Sparse {multiplier.algorithm}",
+        baseline_result=baseline_result
+    )
+    
+    # Add algorithm-specific properties
+    M, K = dense_matrix.shape
+    N = sparse_matrix.shape[1]
+    density = sparse_matrix.nnz / (K * N)
+    
+    result.update({
+        "algorithm": multiplier.algorithm,
+        "matrix_shape": (M, K, N),
+        "density": density,
+        "nnz": sparse_matrix.nnz
+    })
+    
+    return result

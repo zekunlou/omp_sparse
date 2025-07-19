@@ -18,7 +18,12 @@ from typing import Literal, Optional, Union
 import numpy as np
 import scipy.sparse
 
-from omp_sparse.utils import analyze_sparsity_pattern, convert_to_segmented_format
+from omp_sparse.utils import (
+    analyze_sparsity_pattern, 
+    convert_to_segmented_format, 
+    benchmark_sparse_algorithm,
+    benchmark_numpy_dense_multiplication
+)
 
 try:
     # full path: omp_sparse.lib.omp_sparse.omp_sparse_mod.dense_dot_sparse_v4
@@ -243,54 +248,17 @@ class OMPSparseMultiplier:
         Returns:
             Dictionary containing timing and correctness information
         """
-        import gc
-        import time
-
         # Validate inputs
         self._validate_inputs(dense_matrix, sparse_matrix)
 
-        # Compute baseline if not provided
-        if baseline_result is None:
-            baseline_result = np.dot(dense_matrix, sparse_matrix.todense())
-
-        # Run multiple times and collect statistics
-        times = []
-        results = []
-
-        for _ in range(repeats):
-            gc.collect()  # Clean memory before each run
-
-            start_time = time.time()
-            result = self.multiply(dense_matrix, sparse_matrix)
-            end_time = time.time()
-
-            times.append(end_time - start_time)
-            results.append(result)
-
-            gc.collect()  # Clean memory after each run
-
-        # Calculate statistics
-        mean_time = np.mean(times)
-        std_time = np.std(times) if len(times) > 1 else 0.0
-
-        # Check correctness using first result
-        correct = np.allclose(baseline_result, results[0], rtol=1e-10, atol=1e-10)
-
-        # Calculate matrix properties
-        M, K = dense_matrix.shape
-        N = sparse_matrix.shape[1]
-        density = sparse_matrix.nnz / (K * N)
-
-        return {
-            "algorithm": self.algorithm,
-            "mean_time": mean_time,
-            "std_time": std_time,
-            "correct": correct,
-            "matrix_shape": (M, K, N),
-            "density": density,
-            "nnz": sparse_matrix.nnz,
-            "repeats": repeats,
-        }
+        # Use unified benchmarking function from utils
+        return benchmark_sparse_algorithm(
+            multiplier=self,
+            dense_matrix=dense_matrix,
+            sparse_matrix=sparse_matrix,
+            baseline_result=baseline_result,
+            repeats=repeats
+        )
 
 
 def benchmark_dense_dot_dense(
@@ -313,53 +281,14 @@ def benchmark_dense_dot_dense(
     Returns:
         Dictionary containing timing and matrix information for comparison
     """
-    import gc
-    import time
-
-    # Convert sparse to dense for comparison
-    dense_sparse = sparse_matrix.todense()
-
-    # Ensure proper types
-    if dense_matrix.dtype != np.float64:
-        dense_matrix = dense_matrix.astype(np.float64)
-    if dense_sparse.dtype != np.float64:
-        dense_sparse = dense_sparse.astype(np.float64)
-
-    # Run multiple times and collect statistics
-    times = []
-    results = []
-
-    for _ in range(repeats):
-        gc.collect()  # Clean memory before each run
-
-        start_time = time.time()
-        result = np.dot(dense_matrix, dense_sparse)
-        end_time = time.time()
-
-        times.append(end_time - start_time)
-        results.append(result)
-
-        gc.collect()  # Clean memory after each run
-
-    # Calculate statistics
-    mean_time = np.mean(times)
-    std_time = np.std(times) if len(times) > 1 else 0.0
-
-    # Calculate matrix properties
-    M, K = dense_matrix.shape
-    N = sparse_matrix.shape[1]
-    density = sparse_matrix.nnz / (K * N)
-
-    return {
-        "algorithm": "numpy_dense",
-        "mean_time": mean_time,
-        "std_time": std_time,
-        "correct": True,  # This is the baseline
-        "matrix_shape": (M, K, N),
-        "density": density,
-        "nnz": sparse_matrix.nnz,
-        "repeats": repeats,
-    }
+    # Use unified benchmarking function from utils
+    result = benchmark_numpy_dense_multiplication(dense_matrix, sparse_matrix, repeats)
+    
+    # Add 'repeats' field for backwards compatibility
+    result["repeats"] = repeats
+    result["correct"] = True  # This is the baseline
+    
+    return result
 
 
 def multiply_dense_sparse(
